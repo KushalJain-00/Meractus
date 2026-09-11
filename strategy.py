@@ -89,6 +89,13 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
 
         _state['price_history'][sym].append(data['close'])
         _state['vol_history'][sym].append(data.get('volume', 0))
+        # Cap history to 500 bars (indicators need max ~200)
+        if len(_state['price_history'][sym]) > 500:
+            old_id = id(_state['price_history'][sym])
+            _state['price_history'][sym] = _state['price_history'][sym][-500:]
+            _state['vol_history'][sym] = _state['vol_history'][sym][-500:]
+            # Clear vol buffer since array identity changed
+            _state.setdefault('_vp_buf', {}).pop(old_id, None)
         _state['bar_count'][sym] += 1
         if _state['positions'][sym] is not None:
             _state['bars_in_pos'][sym] += 1
@@ -238,9 +245,9 @@ def _ema(prices, span):
     if len(prices) < span:
         return prices[-1]
     alpha = 2.0 / (span + 1)
-    ema_val = prices[0]
-    for p in prices[1:]:
-        ema_val = alpha * p + (1 - alpha) * ema_val
+    ema_val = float(prices[0])
+    for i in range(1, len(prices)):
+        ema_val = alpha * float(prices[i]) + (1 - alpha) * ema_val
     return ema_val
 
 
@@ -268,18 +275,22 @@ def _compute_volatility(prices, window=20):
     return np.std(rets) if len(rets) > 0 else 0.02
 
 
-def _compute_vol_percentile(prices, bar_idx, lookback=100):
-    """Compute current volatility percentile vs recent history."""
-    if bar_idx < lookback + 20:
-        return 0.5  # default: neutral
-    current_vol = _compute_volatility(prices[-10:])
-    vols = []
-    for i in range(max(20, bar_idx - lookback), bar_idx - 10, 10):
-        v = _compute_volatility(prices[i:i + 10])
-        vols.append(v)
-    if not vols:
+def _compute_vol_percentile(prices, bar_idx, sym=None, lookback=100):
+    """Fast O(1) vol percentile using rolling buffer in state."""
+    if bar_idx < 30:
         return 0.5
-    return np.mean(np.array(vols) < current_vol)
+    current_vol = _compute_volatility(prices[-10:])
+    buf = _state.setdefault('_vp_buf', {})
+    key = sym or str(bar_idx)
+    if key not in buf:
+        buf[key] = {'vals': [0.0] * 20, 'idx': 0}
+    b = buf[key]
+    b['vals'][b['idx'] % 20] = current_vol
+    b['idx'] += 1
+    filled = min(b['idx'], 20)
+    if filled < 5:
+        return 0.5
+    return float(np.mean(np.array(b['vals'][:filled]) < current_vol))
 
 
 def _momentum_signal(prices, volumes, bar_idx):
@@ -313,7 +324,7 @@ def _mean_reversion_signal(prices, volumes, bar_idx):
     rsi_val = _rsi(prices)
 
     # KEY IMPROVEMENT: Adaptive z-score threshold
-    vol_pct = _compute_vol_percentile(prices, bar_idx)
+    vol_pct = _compute_vol_percentile(prices, bar_idx, sym=None)
     adaptive_z = -2.0 + (vol_pct - 0.5) * 1.5  # range: -2.75 to -1.25
 
     # Flash crash

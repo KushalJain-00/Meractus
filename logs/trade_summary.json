@@ -1,0 +1,717 @@
+{
+  "total_trades": 3045,
+  "stats": {
+    "connected": true,
+    "tick_count": 35370,
+    "tick_rate": 51.4806796532998,
+    "orders_sent": 3045,
+    "errors": 0,
+    "elapsed": 687.0538663864136,
+    "cash": 9840786.03999999,
+    "portfolio": {
+      "FMC": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "J": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "JD": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "QIU": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "STTX": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "CLP": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "EB": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "GSEK": {
+        "quantity": 2179,
+        "avg_price": 295.9
+      },
+      "NKXT": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "VX": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "LEQ": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "A": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "FDLK": {
+        "quantity": 2867,
+        "avg_price": 208.62
+      },
+      "F": {
+        "quantity": 3306,
+        "avg_price": 194.94
+      },
+      "RI": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "O": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "IXRE": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "BQ": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "ILIT": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "W": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "TCR": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "FMMH": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "EM": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "FSF": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "PKR": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "NM": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "ZHCJ": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "PLBY": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "SIK": {
+        "quantity": 0,
+        "avg_price": 0
+      },
+      "ROL": {
+        "quantity": 0,
+        "avg_price": 0
+      }
+    },
+    "symbols_tracked": 30,
+    "progress": "35370/35370"
+  },
+  "equity_curve": [
+    11739405.559999993,
+    11739090.489999993,
+    11738119.549999991,
+    11738017.129999993,
+    11737396.299999991,
+    11736962.699999992,
+    11736003.899999993,
+    11735102.679999992,
+    11735600.999999993,
+    11735879.709999992,
+    11736235.949999992,
+    11735976.829999994,
+    11736553.499999994,
+    11737623.209999993,
+    11736373.059999991,
+    11737455.559999993,
+    11737481.289999992,
+    11737877.199999992,
+    11737076.24999999,
+    11736900.289999992,
+    11736938.659999993,
+    11737172.749999993,
+    11736939.839999992,
+    11736750.279999992,
+    11736554.079999993,
+    11736342.58999999,
+    11735788.179999992,
+    11735294.489999993,
+    11734275.759999992,
+    11733500.029999992,
+    11733554.93999999,
+    11733265.749999993,
+    11731866.209999993,
+    11731770.089999992,
+    11731192.409999993,
+    11732038.809999991,
+    11731608.509999992,
+    11731978.869999992,
+    11732879.83999999,
+    11732567.019999992,
+    11734048.539999988,
+    11734742.17999999,
+    11734159.24999999,
+    11734822.68999999,
+    11733852.709999992,
+    11733010.969999991,
+    11734013.91999999,
+    11734446.83999999,
+    11734760.479999991,
+    11733018.799999991,
+    11733698.38999999,
+    11733444.249999993,
+    11733203.529999992,
+    11733551.479999991,
+    11731226.649999991,
+    11730157.52999999,
+    11729504.059999991,
+    11727611.46999999,
+    11729515.389999993,
+    11728351.809999991,
+    11724483.109999992,
+    11723491.76999999,
+    11721241.739999993,
+    11722371.119999992,
+    11721936.069999995,
+    11719394.309999991,
+    11720763.549999995,
+    11719363.909999989,
+    11719202.179999994,
+    11718571.529999992,
+    11718742.80999999,
+    11717533.67999999,
+    11718173.309999991,
+    11719664.899999993,
+    11720090.57999999,
+    11719026.629999992,
+    11718462.979999991,
+    11718986.35999999,
+    11720181.179999992,
+    11720161.989999995,
+    11720543.439999988,
+    11721031.74999999,
+    11722278.339999994,
+    11721929.749999993,
+    11722288.369999992,
+    11719288.359999992,
+    11718892.50999999,
+    11719559.41999999,
+    11720399.63999999,
+    11720700.11999999,
+    11720591.889999993,
+    11719543.889999991,
+    11721458.139999991,
+    11724096.10999999,
+    11723285.48999999,
+    11723497.509999992,
+    11723683.719999991,
+    11725180.079999989,
+    11726683.759999989,
+    11727860.68999999
+  ],
+  "trades": [
+    {
+      "symbol": "FSF",
+      "action": "BUY",
+      "quantity": 8738,
+      "price": 73.78,
+      "status": "simulated",
+      "timestamp": 1789128319.4258687,
+      "tick": 35016
+    },
+    {
+      "symbol": "ILIT",
+      "action": "BUY",
+      "quantity": 11119,
+      "price": 56.18,
+      "status": "simulated",
+      "timestamp": 1789128319.4258728,
+      "tick": 35016
+    },
+    {
+      "symbol": "EB",
+      "action": "SELL",
+      "quantity": 2368,
+      "price": 250.58,
+      "pnl": -426.23999999988155,
+      "status": "simulated",
+      "timestamp": 1789128319.5035782,
+      "tick": 35018
+    },
+    {
+      "symbol": "ZHCJ",
+      "action": "SELL",
+      "quantity": 4123,
+      "price": 149.63,
+      "pnl": -288.6099999999719,
+      "status": "simulated",
+      "timestamp": 1789128319.503582,
+      "tick": 35018
+    },
+    {
+      "symbol": "IXRE",
+      "action": "BUY",
+      "quantity": 1301,
+      "price": 473.48,
+      "status": "simulated",
+      "timestamp": 1789128319.973687,
+      "tick": 35030
+    },
+    {
+      "symbol": "O",
+      "action": "SELL",
+      "quantity": 6301,
+      "price": 95.9,
+      "pnl": -819.1299999999713,
+      "status": "simulated",
+      "timestamp": 1789128320.6808338,
+      "tick": 35048
+    },
+    {
+      "symbol": "FMMH",
+      "action": "SELL",
+      "quantity": 6768,
+      "price": 93.49,
+      "pnl": 4466.879999999977,
+      "status": "simulated",
+      "timestamp": 1789128321.5804405,
+      "tick": 35071
+    },
+    {
+      "symbol": "STTX",
+      "action": "SELL",
+      "quantity": 1819,
+      "price": 356.4,
+      "pnl": 3765.3299999999876,
+      "status": "simulated",
+      "timestamp": 1789128321.6208527,
+      "tick": 35072
+    },
+    {
+      "symbol": "FDLK",
+      "action": "BUY",
+      "quantity": 2956,
+      "price": 209.6,
+      "status": "simulated",
+      "timestamp": 1789128321.6991997,
+      "tick": 35074
+    },
+    {
+      "symbol": "ILIT",
+      "action": "SELL",
+      "quantity": 11119,
+      "price": 56.22,
+      "pnl": 444.75999999991154,
+      "status": "simulated",
+      "timestamp": 1789128321.8167787,
+      "tick": 35077
+    },
+    {
+      "symbol": "A",
+      "action": "BUY",
+      "quantity": 10862,
+      "price": 57.98,
+      "status": "simulated",
+      "timestamp": 1789128322.2478504,
+      "tick": 35088
+    },
+    {
+      "symbol": "IXRE",
+      "action": "SELL",
+      "quantity": 1301,
+      "price": 470.95,
+      "pnl": -3291.5299999999643,
+      "status": "simulated",
+      "timestamp": 1789128322.3650455,
+      "tick": 35091
+    },
+    {
+      "symbol": "F",
+      "action": "BUY",
+      "quantity": 3256,
+      "price": 197.98,
+      "status": "simulated",
+      "timestamp": 1789128322.7981594,
+      "tick": 35102
+    },
+    {
+      "symbol": "FSF",
+      "action": "SELL",
+      "quantity": 8738,
+      "price": 73.79,
+      "pnl": 87.3800000000447,
+      "status": "simulated",
+      "timestamp": 1789128322.7981644,
+      "tick": 35102
+    },
+    {
+      "symbol": "J",
+      "action": "BUY",
+      "quantity": 15095,
+      "price": 42.71,
+      "status": "simulated",
+      "timestamp": 1789128323.0352426,
+      "tick": 35108
+    },
+    {
+      "symbol": "ROL",
+      "action": "BUY",
+      "quantity": 5717,
+      "price": 106.64,
+      "status": "simulated",
+      "timestamp": 1789128323.6276264,
+      "tick": 35123
+    },
+    {
+      "symbol": "FMMH",
+      "action": "BUY",
+      "quantity": 6407,
+      "price": 92.77,
+      "status": "simulated",
+      "timestamp": 1789128323.7857652,
+      "tick": 35127
+    },
+    {
+      "symbol": "IXRE",
+      "action": "BUY",
+      "quantity": 1265,
+      "price": 469.25,
+      "status": "simulated",
+      "timestamp": 1789128323.8642278,
+      "tick": 35129
+    },
+    {
+      "symbol": "RI",
+      "action": "BUY",
+      "quantity": 5306,
+      "price": 114.28,
+      "status": "simulated",
+      "timestamp": 1789128323.9427445,
+      "tick": 35131
+    },
+    {
+      "symbol": "FDLK",
+      "action": "SELL",
+      "quantity": 2956,
+      "price": 208.23,
+      "pnl": -4049.7200000000134,
+      "status": "simulated",
+      "timestamp": 1789128324.1002915,
+      "tick": 35135
+    },
+    {
+      "symbol": "O",
+      "action": "BUY",
+      "quantity": 6209,
+      "price": 95.88,
+      "status": "simulated",
+      "timestamp": 1789128324.1002972,
+      "tick": 35135
+    },
+    {
+      "symbol": "CLP",
+      "action": "BUY",
+      "quantity": 1953,
+      "price": 330.27,
+      "status": "simulated",
+      "timestamp": 1789128324.3352125,
+      "tick": 35141
+    },
+    {
+      "symbol": "A",
+      "action": "SELL",
+      "quantity": 10862,
+      "price": 58.49,
+      "pnl": 5539.619999999978,
+      "status": "simulated",
+      "timestamp": 1789128324.6482198,
+      "tick": 35149
+    },
+    {
+      "symbol": "J",
+      "action": "SELL",
+      "quantity": 15095,
+      "price": 42.71,
+      "pnl": -1.0725642596298712e-10,
+      "status": "simulated",
+      "timestamp": 1789128325.4656413,
+      "tick": 35170
+    },
+    {
+      "symbol": "JD",
+      "action": "BUY",
+      "quantity": 1964,
+      "price": 311.34,
+      "status": "simulated",
+      "timestamp": 1789128325.6638427,
+      "tick": 35175
+    },
+    {
+      "symbol": "F",
+      "action": "SELL",
+      "quantity": 3256,
+      "price": 198.09,
+      "pnl": 358.1600000000444,
+      "status": "simulated",
+      "timestamp": 1789128325.703542,
+      "tick": 35176
+    },
+    {
+      "symbol": "FMMH",
+      "action": "SELL",
+      "quantity": 6407,
+      "price": 93.05,
+      "pnl": 1793.9600000000073,
+      "status": "simulated",
+      "timestamp": 1789128326.1805432,
+      "tick": 35188
+    },
+    {
+      "symbol": "RI",
+      "action": "SELL",
+      "quantity": 5306,
+      "price": 115.07,
+      "pnl": 4191.7399999998825,
+      "status": "simulated",
+      "timestamp": 1789128326.3374157,
+      "tick": 35192
+    },
+    {
+      "symbol": "O",
+      "action": "SELL",
+      "quantity": 6209,
+      "price": 96.1,
+      "pnl": 1365.9800000000812,
+      "status": "simulated",
+      "timestamp": 1789128326.4966202,
+      "tick": 35196
+    },
+    {
+      "symbol": "ROL",
+      "action": "SELL",
+      "quantity": 5717,
+      "price": 106.56,
+      "pnl": -457.35999999999024,
+      "status": "simulated",
+      "timestamp": 1789128326.4966245,
+      "tick": 35196
+    },
+    {
+      "symbol": "CLP",
+      "action": "SELL",
+      "quantity": 1953,
+      "price": 330.73,
+      "pnl": 898.380000000071,
+      "status": "simulated",
+      "timestamp": 1789128326.7329488,
+      "tick": 35202
+    },
+    {
+      "symbol": "IXRE",
+      "action": "SELL",
+      "quantity": 1265,
+      "price": 470.87,
+      "pnl": 2049.3000000000056,
+      "status": "simulated",
+      "timestamp": 1789128326.7722235,
+      "tick": 35203
+    },
+    {
+      "symbol": "EB",
+      "action": "BUY",
+      "quantity": 2457,
+      "price": 250.46,
+      "status": "simulated",
+      "timestamp": 1789128327.402472,
+      "tick": 35219
+    },
+    {
+      "symbol": "A",
+      "action": "BUY",
+      "quantity": 10375,
+      "price": 57.9,
+      "status": "simulated",
+      "timestamp": 1789128327.6799664,
+      "tick": 35226
+    },
+    {
+      "symbol": "EM",
+      "action": "BUY",
+      "quantity": 996,
+      "price": 648.03,
+      "status": "simulated",
+      "timestamp": 1789128328.122233,
+      "tick": 35237
+    },
+    {
+      "symbol": "JD",
+      "action": "SELL",
+      "quantity": 1964,
+      "price": 311.12,
+      "pnl": -432.0799999998303,
+      "status": "simulated",
+      "timestamp": 1789128328.5654774,
+      "tick": 35248
+    },
+    {
+      "symbol": "NM",
+      "action": "BUY",
+      "quantity": 498,
+      "price": 1269.54,
+      "status": "simulated",
+      "timestamp": 1789128329.4847827,
+      "tick": 35271
+    },
+    {
+      "symbol": "EB",
+      "action": "SELL",
+      "quantity": 2457,
+      "price": 250.29,
+      "pnl": -417.68999999996925,
+      "status": "simulated",
+      "timestamp": 1789128330.0768883,
+      "tick": 35286
+    },
+    {
+      "symbol": "O",
+      "action": "BUY",
+      "quantity": 6541,
+      "price": 95.61,
+      "status": "simulated",
+      "timestamp": 1789128330.234554,
+      "tick": 35290
+    },
+    {
+      "symbol": "EM",
+      "action": "SELL",
+      "quantity": 996,
+      "price": 647.08,
+      "pnl": -946.1999999999321,
+      "status": "simulated",
+      "timestamp": 1789128330.6721056,
+      "tick": 35301
+    },
+    {
+      "symbol": "CLP",
+      "action": "BUY",
+      "quantity": 1871,
+      "price": 330.01,
+      "status": "simulated",
+      "timestamp": 1789128330.8277602,
+      "tick": 35305
+    },
+    {
+      "symbol": "FMC",
+      "action": "BUY",
+      "quantity": 13855,
+      "price": 46.4,
+      "status": "simulated",
+      "timestamp": 1789128330.904759,
+      "tick": 35307
+    },
+    {
+      "symbol": "F",
+      "action": "BUY",
+      "quantity": 3306,
+      "price": 194.94,
+      "status": "simulated",
+      "timestamp": 1789128331.61168,
+      "tick": 35325
+    },
+    {
+      "symbol": "GSEK",
+      "action": "BUY",
+      "quantity": 2179,
+      "price": 295.9,
+      "status": "simulated",
+      "timestamp": 1789128331.728438,
+      "tick": 35328
+    },
+    {
+      "symbol": "A",
+      "action": "SELL",
+      "quantity": 10375,
+      "price": 57.18,
+      "pnl": -7469.999999999988,
+      "status": "simulated",
+      "timestamp": 1789128332.0830944,
+      "tick": 35337
+    },
+    {
+      "symbol": "O",
+      "action": "SELL",
+      "quantity": 6541,
+      "price": 95.53,
+      "pnl": -523.2799999999888,
+      "status": "simulated",
+      "timestamp": 1789128332.63754,
+      "tick": 35351
+    },
+    {
+      "symbol": "FDLK",
+      "action": "BUY",
+      "quantity": 2867,
+      "price": 208.62,
+      "status": "simulated",
+      "timestamp": 1789128333.110869,
+      "tick": 35363
+    },
+    {
+      "symbol": "NM",
+      "action": "SELL",
+      "quantity": 498,
+      "price": 1262.38,
+      "pnl": -3565.6799999999275,
+      "status": "simulated",
+      "timestamp": 1789128333.149876,
+      "tick": 35364
+    },
+    {
+      "symbol": "CLP",
+      "action": "SELL",
+      "quantity": 1871,
+      "price": 333.06,
+      "pnl": 5706.550000000021,
+      "status": "simulated",
+      "timestamp": 1789128333.2283745,
+      "tick": 35366
+    },
+    {
+      "symbol": "FMC",
+      "action": "SELL",
+      "quantity": 13855,
+      "price": 46.22,
+      "pnl": -2493.899999999996,
+      "status": "simulated",
+      "timestamp": 1789128333.3077893,
+      "tick": 35368
+    }
+  ],
+  "saved_at": "2026-09-11T17:35:33.388058"
+}
