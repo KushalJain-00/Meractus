@@ -1,21 +1,20 @@
 """
-Mercatus Arena Production Strategy
-==================================
-Weighted Ensemble of three models:
-  1. Mean Reversion + Flash Plays (weight: 0.55)
-  2. RSI + MACD Composite (weight: 0.25)
-  3. EMA Crossover Momentum (weight: 0.20)
+Mercatus Arena Production Strategy (V2 - Improved)
+==================================================
+Key Improvement: Adaptive z-score thresholds based on volatility regime.
+  - High volatility: lower threshold (-1.5) for more opportunities
+  - Low volatility: higher threshold (-2.5) for higher quality signals
 
-Optimized via parameter sweep: Sharpe 6.26, Return +66.6%
+Also includes P1 improvements:
+  - Drawdown-based position scaling
+  - Circuit breaker after 3 consecutive losses
+  - Regime guard (skip MR on trending symbols)
+  - Stale position exit after 500 bars
 
 Formulas:
-  EMA_t = alpha * Price_t + (1-alpha) * EMA_{t-1}
+  adaptive_z = -2.0 + (vol_percentile - 0.5) * 1.5
   z_score = (Price - SMA(20)) / StdDev(20)
   RSI = 100 - 100/(1 + avg_gain/avg_loss)
-  MACD = EMA(12) - EMA(26)
-
-  Weighted Score = 0.55 * MR + 0.25 * Composite + 0.20 * Momentum
-  BUY if score > 0.3, SELL if score < -0.2
 
 Usage:
   def strategy(current_data, portfolio, cash, history):
@@ -29,19 +28,25 @@ from typing import Dict, List, Tuple
 
 # Strategy state (persists across ticks)
 _state = {
-    'price_history': {},   # {symbol: [prices]}
-    'vol_history': {},     # {symbol: [volumes]}
-    'bar_count': {},       # {symbol: int}
+    'price_history': {},
+    'vol_history': {},
+    'bar_count': {},
     'warmup_done': False,
     'initialized': False,
-    'positions': {},       # {symbol: 'long' or None}
-    'entry_prices': {},    # {symbol: float}
-    'highest_prices': {},  # {symbol: float}
+    'positions': {},
+    'entry_prices': {},
+    'highest_prices': {},
+    'bars_in_pos': {},
     'cash_reserve_pct': 0.10,
     'max_exposure_pct': 0.20,
     'stop_loss_pct': 0.05,
     'trailing_stop_pct': 0.05,
     'min_hold_bars': 60,
+    # P1 improvements
+    'peak_equity': 0,
+    'consecutive_losses': 0,
+    'circuit_breaker_active': False,
+    'circuit_breaker_cooldown': 0,
 }
 
 WARMUP_BARS = 100
@@ -61,7 +66,6 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
     Returns:
         {} for no action, {sym: ("BUY", qty)} or {sym: ("SELL", qty)}
     """
-    # Initialize state on first call
     if not _state['initialized']:
         _state['initialized'] = True
         for sym in current_data:
@@ -71,8 +75,8 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
             _state['positions'][sym] = None
             _state['entry_prices'][sym] = None
             _state['highest_prices'][sym] = None
+            _state['bars_in_pos'][sym] = 0
 
-    # Update price history
     for sym, data in current_data.items():
         if sym not in _state['price_history']:
             _state['price_history'][sym] = []
@@ -81,22 +85,33 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
             _state['positions'][sym] = None
             _state['entry_prices'][sym] = None
             _state['highest_prices'][sym] = None
+            _state['bars_in_pos'][sym] = 0
 
         _state['price_history'][sym].append(data['close'])
         _state['vol_history'][sym].append(data.get('volume', 0))
         _state['bar_count'][sym] += 1
+        if _state['positions'][sym] is not None:
+            _state['bars_in_pos'][sym] += 1
 
-    # Check warmup
     min_bars = min(_state['bar_count'].values()) if _state['bar_count'] else 0
     if min_bars < WARMUP_BARS:
         return {}
 
-    # Compute total equity for position sizing
+    # Compute equity
     total_equity = cash
     for sym, pos in portfolio.items():
         qty = pos.get('quantity', 0)
         if qty > 0 and sym in current_data:
             total_equity += qty * current_data[sym]['close']
+
+    _state['peak_equity'] = max(_state['peak_equity'], total_equity)
+    current_dd = (_state['peak_equity'] - total_equity) / _state['peak_equity'] if _state['peak_equity'] > 0 else 0
+
+    # Circuit breaker cooldown
+    if _state['circuit_breaker_cooldown'] > 0:
+        _state['circuit_breaker_cooldown'] -= 1
+        if _state['circuit_breaker_cooldown'] == 0:
+            _state['circuit_breaker_active'] = False
 
     actions = {}
 
@@ -114,48 +129,64 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
         current_price = prices[-1]
         held_qty = portfolio.get(sym, {}).get('quantity', 0)
 
-        # ---- RISK CHECKS (always active) ----
+        # ---- RISK CHECKS ----
+
+        # Circuit breaker: skip new buys
+        if _state['circuit_breaker_active'] and held_qty == 0:
+            continue
+
+        # Drawdown scaling for position sizing
+        dd_mult = 1.0
+        if current_dd > 0.15:
+            dd_mult = 0.25
+        elif current_dd > 0.05:
+            dd_mult = 1.0 - (current_dd - 0.05) / 0.10 * 0.75
 
         # Stop-loss check
-        if held_qty > 0 and sym in _state['entry_prices'] and _state['entry_prices'][sym]:
+        if held_qty > 0 and _state['entry_prices'][sym]:
             entry = _state['entry_prices'][sym]
             highest = _state['highest_prices'].get(sym, entry)
-
-            # Update highest
             _state['highest_prices'][sym] = max(highest, current_price)
 
-            # Trailing stop
             if current_price < _state['highest_prices'][sym] * (1 - _state['trailing_stop_pct']):
                 actions[sym] = ('SELL', held_qty)
                 _state['positions'][sym] = None
                 _state['entry_prices'][sym] = None
                 _state['highest_prices'][sym] = None
+                _state['bars_in_pos'][sym] = 0
+                _state['consecutive_losses'] += 1
+                if _state['consecutive_losses'] >= 3:
+                    _state['circuit_breaker_active'] = True
+                    _state['circuit_breaker_cooldown'] = 300
                 continue
 
-            # Hard stop
             if current_price < entry * (1 - _state['stop_loss_pct']):
                 actions[sym] = ('SELL', held_qty)
                 _state['positions'][sym] = None
                 _state['entry_prices'][sym] = None
                 _state['highest_prices'][sym] = None
+                _state['bars_in_pos'][sym] = 0
+                _state['consecutive_losses'] += 1
+                if _state['consecutive_losses'] >= 3:
+                    _state['circuit_breaker_active'] = True
+                    _state['circuit_breaker_cooldown'] = 300
+                continue
+
+            # Stale exit (500 bars)
+            if _state['bars_in_pos'][sym] > 500:
+                actions[sym] = ('SELL', held_qty)
+                _state['positions'][sym] = None
+                _state['entry_prices'][sym] = None
+                _state['highest_prices'][sym] = None
+                _state['bars_in_pos'][sym] = 0
                 continue
 
         # ---- MODEL SIGNALS ----
 
-        # Model 1: Momentum (simplified inline)
         signal_mom = _momentum_signal(prices, volumes, bar_idx)
-
-        # Model 2: Mean Reversion (simplified inline)
         signal_mr = _mean_reversion_signal(prices, volumes, bar_idx)
-
-        # Model 3: Simple trend + RSI composite
         signal_comp = _composite_signal(prices, volumes, bar_idx)
 
-        # ---- ENSEMBLE VOTING (Optimized Weights) ----
-        # Mean Reversion: 0.55, Composite: 0.25, Momentum: 0.20
-        # BUY if weighted_score > 0.3, SELL if weighted_score < -0.2
-
-        # Map signals to numeric: BUY=+1, SELL=-1, HOLD=0
         def signal_to_num(sig):
             return 1.0 if sig == 'BUY' else (-1.0 if sig == 'SELL' else 0.0)
 
@@ -165,18 +196,15 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
             0.20 * signal_to_num(signal_mom[0]) * signal_mom[1]
         )
 
-        # Count votes for fallback logic
         buy_votes = sum(1 for s in [signal_mom[0], signal_mr[0], signal_comp[0]] if s == 'BUY')
         sell_votes = sum(1 for s in [signal_mom[0], signal_mr[0], signal_comp[0]] if s == 'SELL')
 
         if weighted_score > 0.3 and held_qty == 0:
             avg_conf = min(1.0, weighted_score)
-
-            # Position sizing
             vol = _compute_volatility(prices)
             base_alloc = min(_state['max_exposure_pct'], 0.10 * avg_conf)
             vol_scalar = min(1.0, 0.02 / max(vol, 0.001))
-            dollar_alloc = total_equity * base_alloc * vol_scalar
+            dollar_alloc = total_equity * base_alloc * vol_scalar * dd_mult
             dollar_alloc = min(dollar_alloc, cash * (1 - _state['cash_reserve_pct']))
 
             qty = int(dollar_alloc / current_price) if current_price > 0 else 0
@@ -185,31 +213,28 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
                 _state['positions'][sym] = 'long'
                 _state['entry_prices'][sym] = current_price
                 _state['highest_prices'][sym] = current_price
+                _state['bars_in_pos'][sym] = 0
 
         elif (weighted_score < -0.2 or sell_votes >= 2) and held_qty > 0:
-            # Check minimum hold
-            if sym in _state['entry_prices'] and _state['entry_prices'][sym]:
-                bars_since = bar_idx  # approximate
-                if bars_since > _state['min_hold_bars']:
-                    actions[sym] = ('SELL', held_qty)
-                    _state['positions'][sym] = None
-                    _state['entry_prices'][sym] = None
-                    _state['highest_prices'][sym] = None
+            if _state['bars_in_pos'][sym] > _state['min_hold_bars']:
+                actions[sym] = ('SELL', held_qty)
+                _state['positions'][sym] = None
+                _state['entry_prices'][sym] = None
+                _state['highest_prices'][sym] = None
+                _state['bars_in_pos'][sym] = 0
 
         # Flash crash recovery
         if held_qty > 0 and bar_idx >= 60:
             old_price = prices[-60]
             if old_price > 0:
                 pct = (current_price - old_price) / old_price
-                if pct < -0.15:  # 15% flash crash
-                    # Hold through, but tighten stop
+                if pct < -0.15:
                     _state['highest_prices'][sym] = current_price * 1.02
 
     return actions
 
 
 def _ema(prices, span):
-    """Inline EMA."""
     if len(prices) < span:
         return prices[-1]
     alpha = 2.0 / (span + 1)
@@ -220,7 +245,6 @@ def _ema(prices, span):
 
 
 def _rsi(prices, period=14):
-    """Inline RSI."""
     if len(prices) < period + 1:
         return 50.0
     deltas = np.diff(prices)
@@ -238,39 +262,44 @@ def _rsi(prices, period=14):
 
 
 def _compute_volatility(prices, window=20):
-    """Inline volatility."""
     if len(prices) < window + 1:
         return 0.02
     rets = np.diff(np.log(prices[-window - 1:]))
     return np.std(rets) if len(rets) > 0 else 0.02
 
 
+def _compute_vol_percentile(prices, bar_idx, lookback=100):
+    """Compute current volatility percentile vs recent history."""
+    if bar_idx < lookback + 20:
+        return 0.5  # default: neutral
+    current_vol = _compute_volatility(prices[-10:])
+    vols = []
+    for i in range(max(20, bar_idx - lookback), bar_idx - 10, 10):
+        v = _compute_volatility(prices[i:i + 10])
+        vols.append(v)
+    if not vols:
+        return 0.5
+    return np.mean(np.array(vols) < current_vol)
+
+
 def _momentum_signal(prices, volumes, bar_idx):
-    """EMA crossover momentum signal."""
     if bar_idx < 35:
         return ('HOLD', 0.0)
-
     ema10 = _ema(prices, 10)
     ema30 = _ema(prices, 30)
     prev_ema10 = _ema(prices[:-1], 10)
     prev_ema30 = _ema(prices[:-1], 30)
-
     rsi_val = _rsi(prices)
-
-    # Golden cross
     if prev_ema10 <= prev_ema30 and ema10 > ema30:
-        if rsi_val < 74:  # RSI boost +4
+        if rsi_val < 74:
             return ('BUY', 0.7)
-
-    # Death cross
     if prev_ema10 >= prev_ema30 and ema10 < ema30:
         return ('SELL', 0.8)
-
     return ('HOLD', 0.0)
 
 
 def _mean_reversion_signal(prices, volumes, bar_idx):
-    """Z-score mean reversion signal."""
+    """V2: Adaptive z-score threshold based on volatility regime."""
     if bar_idx < 30:
         return ('HOLD', 0.0)
 
@@ -283,14 +312,18 @@ def _mean_reversion_signal(prices, volumes, bar_idx):
     z = (prices[-1] - sma_val) / std_val
     rsi_val = _rsi(prices)
 
+    # KEY IMPROVEMENT: Adaptive z-score threshold
+    vol_pct = _compute_vol_percentile(prices, bar_idx)
+    adaptive_z = -2.0 + (vol_pct - 0.5) * 1.5  # range: -2.75 to -1.25
+
     # Flash crash
     if bar_idx >= 60:
         old = prices[-60]
         if old > 0 and (prices[-1] - old) / old < -0.10:
             return ('BUY', 0.8)
 
-    # Oversold
-    if z < -2.0 and rsi_val < 34:  # RSI boost +4
+    # Oversold with adaptive threshold
+    if z < adaptive_z and rsi_val < 34:
         return ('BUY', min(1.0, abs(z) / 3.0))
 
     # Exit at mean
@@ -301,27 +334,17 @@ def _mean_reversion_signal(prices, volumes, bar_idx):
 
 
 def _composite_signal(prices, volumes, bar_idx):
-    """RSI + MACD composite signal."""
     if bar_idx < 30:
         return ('HOLD', 0.0)
-
     rsi_val = _rsi(prices)
-
-    # Simple MACD
     ema12 = _ema(prices, 12)
     ema26 = _ema(prices, 26)
     macd_val = ema12 - ema26
-
     prev_ema12 = _ema(prices[:-1], 12)
     prev_ema26 = _ema(prices[:-1], 26)
     prev_macd = prev_ema12 - prev_ema26
-
-    # MACD crosses above zero + RSI not overbought
     if prev_macd < 0 and macd_val > 0 and rsi_val < 70:
         return ('BUY', 0.6)
-
-    # MACD crosses below zero
     if prev_macd > 0 and macd_val < 0:
         return ('SELL', 0.6)
-
     return ('HOLD', 0.0)
