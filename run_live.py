@@ -1,6 +1,6 @@
 """
 Mercatus Arena Live Runner
-Connects API → Strategy → Orders with real-time dashboard.
+Works with real server OR mock server for testing.
 """
 import asyncio
 import argparse
@@ -18,30 +18,19 @@ from dashboard import Dashboard
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
-    handlers=[
-        logging.FileHandler('logs/mercatus.log'),
-        logging.StreamHandler(sys.stdout),
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 log = logging.getLogger('mercatus.runner')
 
-# Global stop flag
 _stop = False
-
-
-def handle_signal(sig, frame):
+def _sig(s, f):
     global _stop
-    log.info("Shutdown signal received...")
     _stop = True
-
-
-signal.signal(signal.SIGINT, handle_signal)
-signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, _sig)
+signal.signal(signal.SIGTERM, _sig)
 
 
 class LiveRunner:
-    """Orchestrates API → Strategy → Orders with dashboard."""
-
     def __init__(self, client, dashboard: Dashboard, speed: float = 1.0):
         self.client = client
         self.dashboard = dashboard
@@ -49,133 +38,118 @@ class LiveRunner:
         self.running = False
         self.tick_count = 0
 
-        # Wire up callbacks
-        self.client.on_tick = self._on_tick
-        self.client.on_trade = self._on_trade
-
-    def _on_tick(self, tick_num: int, data: dict):
-        """Called on each market data tick."""
+    def _on_tick(self, tick_num, data):
         self.tick_count = tick_num
 
-    def _on_trade(self, trade: dict):
-        """Called when a trade is executed."""
+    def _on_trade(self, trade):
         self.dashboard.log_trade(trade)
 
     async def run_live(self):
         """Run against live Mercatus server."""
         log.info("Connecting to live server...")
-        connected = await self.client.connect()
-        if not connected:
-            log.error("Failed to connect!")
+        if not self.client.login():
+            log.error("Login failed!")
             return
 
-        log.info("Connected! Starting strategy loop...")
+        self.client.start_time = time.time()
         self.running = True
 
-        # Start listening in background
-        listen_task = asyncio.create_task(self.client.listen())
-
-        # Main strategy loop
-        try:
+        connected = await self.client.connect_ws()
+        if connected:
+            log.info("WebSocket connected, listening for ticks...")
+            reconnect_count = 0
             while self.running and not _stop:
+                if not self.client.connected:
+                    reconnect_count += 1
+                    if reconnect_count > 5:
+                        log.warning("Too many reconnects, falling back to REST")
+                        break
+                    log.info(f"WS disconnected, reconnecting ({reconnect_count}/5)...")
+                    await asyncio.sleep(1)
+                    await self.client.connect_ws()
+                    continue
+                reconnect_count = 0
                 await self._strategy_tick()
-                await asyncio.sleep(0.1)  # 100ms strategy loop
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await self.client.disconnect()
-            self.dashboard.save_state(self.client.get_stats())
-            self.dashboard.generate_graphs()
+                await asyncio.sleep(0.05)
+
+        if not self.client.connected or not connected:
+            log.info("Falling back to REST polling...")
+            while self.running and not _stop:
+                self.client.get_snapshot()
+                self.client.get_portfolio()
+                self.tick_count += 1
+                await self._strategy_tick()
+                await asyncio.sleep(1.0)
+
+        self.dashboard.save_state(self.client.get_stats())
+        self.dashboard.generate_graphs()
 
     async def run_simulation(self):
         """Run simulation with CSV data."""
         log.info("Starting simulation...")
-        connected = self.client.connect()
-        if not connected:
+        if not self.client.connect():
             log.error("Failed to load data!")
             return
 
-        log.info(f"Data loaded. Running simulation...")
         self.running = True
+        log.info(f"Running {len(self.client._timestamps)} ticks...")
 
         try:
             while self.running and not _stop:
                 if not self.client.get_next_tick():
-                    log.info("Simulation complete!")
                     break
-
                 await self._strategy_tick()
-
-                # Adaptive speed
                 if self.speed > 0:
                     await asyncio.sleep(1.0 / self.speed)
-
-                # Update dashboard every 100 ticks
                 if self.tick_count % 100 == 0:
                     stats = self.client.get_stats()
-                    self.dashboard.update(
-                        stats,
-                        self.client.current_data,
-                        self.dashboard.trade_log.get_recent(),
-                    )
-
+                    self.dashboard.update(stats, self.client.current_data,
+                                          self.dashboard.trade_log.get_recent())
         except asyncio.CancelledError:
             pass
-        finally:
-            stats = self.client.get_stats()
-            self.dashboard.save_state(stats)
-            self.dashboard.generate_graphs()
-            self._print_final_summary(stats)
+
+        stats = self.client.get_stats()
+        self.dashboard.save_state(stats)
+        self.dashboard.generate_graphs()
+        self._print_summary(stats)
 
     async def _strategy_tick(self):
-        """Run one tick of the strategy."""
         if not self.client.current_data:
             return
-
         try:
-            # Call strategy
             actions = strategy(
                 self.client.current_data,
                 self.client.portfolio,
                 self.client.cash,
                 self.client.history,
             )
-
-            # Send orders
             if actions:
                 for symbol, (action, qty) in actions.items():
                     if qty > 0:
-                        success = await self.client.send_order(symbol, action, qty)
+                        success = self.client.send_order(symbol, action, qty)
                         if success:
                             log.info(f"ORDER: {action} {qty} {symbol}")
 
-            # Drain pending trades from simulated client
-            if hasattr(self.client, '_pending_trades'):
-                while self.client._pending_trades:
-                    trade = self.client._pending_trades.pop(0)
-                    self.dashboard.log_trade(trade)
-                    if self.on_trade:
-                        self.client.on_trade(trade)
+            while self.client._pending_trades:
+                t = self.client._pending_trades.pop(0)
+                self.dashboard.log_trade(t)
 
         except Exception as e:
             log.error(f"Strategy error: {e}", exc_info=True)
             self.client.errors += 1
 
-    def _print_final_summary(self, stats: dict):
-        """Print final performance summary."""
+    def _print_summary(self, stats: dict):
         cash = stats.get('cash', 10_000_000)
         equity = cash
-        portfolio = stats.get('portfolio', {})
-        for sym, pos in portfolio.items():
+        for sym, pos in stats.get('portfolio', {}).items():
             qty = pos.get('quantity', 0)
-            entry = pos.get('avg_price', 0)
-            equity += qty * entry
+            price = self.client.last_prices.get(sym, pos.get('avg_price', 0))
+            equity += qty * price
 
         total_return = (equity - 10_000_000) / 10_000_000 * 100
         trades = self.dashboard.trade_log.trades
         pnls = [t.get('pnl', 0) for t in trades if 'pnl' in t]
         wins = sum(1 for p in pnls if p > 0)
-        win_rate = wins / len(pnls) * 100 if pnls else 0
 
         print("\n" + "=" * 60)
         print("  SIMULATION COMPLETE")
@@ -183,49 +157,67 @@ class LiveRunner:
         print(f"  Final Equity:  ${equity:,.0f}")
         print(f"  Total Return:  {total_return:+.2f}%")
         print(f"  Total Trades:  {len(trades)}")
-        print(f"  Win Rate:      {win_rate:.1f}%")
+        print(f"  Win Rate:      {wins / max(len(pnls), 1) * 100:.1f}%")
         if pnls:
-            print(f"  Avg Win:       ${sum(p for p in pnls if p > 0) / max(wins, 1):+,.0f}")
-            print(f"  Avg Loss:      ${sum(p for p in pnls if p < 0) / max(len(pnls) - wins, 1):+,.0f}")
-            print(f"  Profit Factor: {sum(p for p in pnls if p > 0) / abs(sum(p for p in pnls if p < 0)):.2f}")
-        print(f"  Ticks:         {stats.get('tick_count', 0):,}")
-        print(f"  Orders Sent:   {stats.get('orders_sent', 0)}")
-        print(f"  Errors:        {stats.get('errors', 0)}")
+            avg_win = sum(p for p in pnls if p > 0) / max(wins, 1)
+            avg_loss = sum(p for p in pnls if p < 0) / max(len(pnls) - wins, 1)
+            print(f"  Avg Win:       ${avg_win:+,.0f}")
+            print(f"  Avg Loss:      ${avg_loss:+,.0f}")
         print("=" * 60)
-        print(f"\n  Logs saved to: logs/")
-        print(f"  Graphs saved to: logs/")
-        print()
 
 
 async def main():
-    parser = argparse.ArgumentParser(description='Mercatus Arena Live Runner')
-    parser.add_argument('--mode', choices=['live', 'simulate'], default='simulate',
-                        help='Run mode: live (real server) or simulate (CSV data)')
-    parser.add_argument('--server', default='ws://localhost:8765',
-                        help='WebSocket server URL')
-    parser.add_argument('--team', default='TeamAlpha', help='Team name')
-    parser.add_argument('--code', default='abc123', help='Team code')
-    parser.add_argument('--data', default='paper_dataset(1).csv',
-                        help='CSV data file for simulation')
-    parser.add_argument('--speed', type=float, default=10.0,
-                        help='Simulation speed (ticks/sec)')
-    parser.add_argument('--duration', type=int, default=0,
-                        help='Run duration in seconds (0=forever)')
+    parser = argparse.ArgumentParser(description='Mercatus Arena Runner')
+    parser.add_argument('config', nargs='?', help='Config JSON file')
+    parser.add_argument('--mode', choices=['live', 'simulate', 'mock'], default='simulate')
+    parser.add_argument('--data', default='paper_dataset(1).csv')
+    parser.add_argument('--speed', type=float, default=10.0)
     args = parser.parse_args()
 
     dashboard = Dashboard()
 
     if args.mode == 'simulate':
-        with open('dataset_meta.json') as f:
+        with open(os.path.join(os.path.dirname(__file__), 'docs', 'dataset_meta.json')) as f:
             meta = json.load(f)
         client = SimulatedClient(args.data, meta['symbols'])
         runner = LiveRunner(client, dashboard, speed=args.speed)
-        log.info(f"Simulation mode: {args.data} at {args.speed}x speed")
         await runner.run_simulation()
-    else:
-        client = MercatusClient(args.server, args.team, args.code)
+
+    elif args.mode == 'mock':
+        from mock_server import run_mock_server
+        client = MercatusClient('http://localhost:4040', api_key='sk_mock')
+
+        async def run():
+            mock_task = asyncio.create_task(run_mock_server(args.data))
+            await asyncio.sleep(1)
+            runner = LiveRunner(client, dashboard, speed=50)
+            runner.running = True
+            while runner.running and not _stop:
+                snap = client.get_snapshot()
+                if snap:
+                    client.tick_count += 1
+                    client.history.append({'timestamp': time.time(), 'data': snap})
+                await runner._strategy_tick()
+                await asyncio.sleep(0.02)
+            dashboard.save_state(client.get_stats())
+            dashboard.generate_graphs()
+            mock_task.cancel()
+
+        await run()
+
+    elif args.mode == 'live':
+        if not args.config:
+            print("Need config file for live mode: --mode live config.json")
+            return
+        with open(args.config) as f:
+            cfg = json.load(f)
+        client = MercatusClient(
+            cfg['server']['base_url'],
+            api_key=cfg['auth'].get('api_key', ''),
+            email=cfg['auth'].get('email', ''),
+            password=cfg['auth'].get('password', ''),
+        )
         runner = LiveRunner(client, dashboard)
-        log.info(f"Live mode: {args.server} as {args.team}")
         await runner.run_live()
 
 

@@ -524,11 +524,388 @@ def add_text_page(pdf, title, content):
     plt.close()
 
 
+def _load_sim_data():
+    """Load real simulation data from logs/."""
+    data = {}
+    sim_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs', 'simulation_results.json')
+    trade_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs', 'trade_summary.json')
+    if os.path.exists(sim_path):
+        with open(sim_path) as f:
+            data['equity'] = json.load(f).get('equity_curve', [])
+    if os.path.exists(trade_path):
+        with open(trade_path) as f:
+            data['trade_summary'] = json.load(f)
+    return data
+
+
+def plot_real_equity_curve(pdf, sim_data):
+    fig, ax = plt.subplots(figsize=(11, 6))
+    fig.patch.set_facecolor(COLORS['bg'])
+    ax.set_facecolor(COLORS['bg'])
+
+    equity = sim_data.get('equity', [])
+    if not equity:
+        ax.text(0.5, 0.5, 'No simulation data available', transform=ax.transAxes,
+                ha='center', va='center', color=COLORS['text'], fontsize=14)
+        pdf.savefig(fig, facecolor=fig.get_facecolor())
+        plt.close()
+        return
+
+    ticks = np.arange(len(equity))
+    equity_arr = np.array(equity) / 1e6
+
+    ax.plot(ticks, equity_arr, color=COLORS['accent'], linewidth=1.2, alpha=0.7, label='Tick-by-Tick')
+
+    window = min(200, len(equity) // 10)
+    if window > 1:
+        ma = np.convolve(equity_arr, np.ones(window)/window, mode='valid')
+        ax.plot(np.arange(window-1, len(equity)), ma, color=COLORS['v1_adaptive'],
+                linewidth=2.5, label=f'{window}-Tick Moving Avg')
+
+    ax.axhline(y=10, color='#f44336', linestyle='--', linewidth=1, alpha=0.5, label='Starting Capital ($10M)')
+    ax.fill_between(ticks, 10, equity_arr, where=equity_arr >= 10,
+                    alpha=0.15, color=COLORS['mean_reversion'])
+    ax.fill_between(ticks, 10, equity_arr, where=equity_arr < 10,
+                    alpha=0.15, color='#f44336')
+
+    final = equity_arr[-1]
+    ret = (final - 10) / 10 * 100
+    ax.text(0.98, 0.05, f'Final: ${final:.2f}M ({ret:+.2f}%)',
+            transform=ax.transAxes, ha='right', va='bottom',
+            color=COLORS['mean_reversion'] if ret >= 0 else '#f44336',
+            fontsize=12, fontweight='bold',
+            bbox=dict(boxstyle='round', facecolor='#2a2a4a', alpha=0.8))
+
+    ax.set_xlabel('Tick Number', color=COLORS['text'], fontsize=12)
+    ax.set_ylabel('Portfolio Value ($M)', color=COLORS['text'], fontsize=12)
+    ax.set_title('Real Simulation Equity Curve (Actual Tick Data)', color=COLORS['text'],
+                 fontsize=14, fontweight='bold')
+    ax.legend(facecolor='#2a2a4a', edgecolor=COLORS['grid'], labelcolor=COLORS['text'], fontsize=9)
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'])
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+    plt.tight_layout()
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close()
+
+
+def plot_drawdown_duration(pdf, sim_data):
+    fig, axes = plt.subplots(2, 1, figsize=(11, 8), gridspec_kw={'height_ratios': [2, 1]})
+    fig.patch.set_facecolor(COLORS['bg'])
+
+    equity = sim_data.get('equity', [])
+    if not equity or len(equity) < 10:
+        for ax in axes:
+            ax.set_facecolor(COLORS['bg'])
+            ax.text(0.5, 0.5, 'Insufficient data', transform=ax.transAxes,
+                    ha='center', va='center', color=COLORS['text'])
+        pdf.savefig(fig, facecolor=fig.get_facecolor())
+        plt.close()
+        return
+
+    equity_arr = np.array(equity)
+    cummax = np.maximum.accumulate(equity_arr)
+    dd = (equity_arr - cummax) / cummax * 100
+    ticks = np.arange(len(dd))
+
+    ax = axes[0]
+    ax.set_facecolor(COLORS['bg'])
+    ax.fill_between(ticks, dd, 0, alpha=0.4, color='#f44336')
+    ax.plot(ticks, dd, color='#f44336', linewidth=1)
+
+    max_dd_idx = np.argmin(dd)
+    ax.annotate(f'Max DD: {dd[max_dd_idx]:.2f}%',
+                xy=(max_dd_idx, dd[max_dd_idx]),
+                xytext=(max_dd_idx + len(dd)*0.1, dd[max_dd_idx] * 0.6),
+                arrowprops=dict(arrowstyle='->', color=COLORS['text']),
+                color=COLORS['text'], fontsize=10, fontweight='bold')
+
+    ax.set_ylabel('Drawdown (%)', color=COLORS['text'], fontsize=12)
+    ax.set_title('Drawdown Analysis (Real Simulation)', color=COLORS['text'],
+                 fontsize=14, fontweight='bold')
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'])
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+
+    in_dd = dd < 0
+    durations = []
+    start = None
+    for i in range(len(in_dd)):
+        if in_dd[i] and start is None:
+            start = i
+        elif not in_dd[i] and start is not None:
+            durations.append((start, i, i - start))
+            start = None
+    if start is not None:
+        durations.append((start, len(in_dd), len(in_dd) - start))
+
+    ax = axes[1]
+    ax.set_facecolor(COLORS['bg'])
+    if durations:
+        starts, ends, durs = zip(*durations)
+        colors_dd = ['#f44336' if d > np.median(durs) else '#FF9800' for d in durs]
+        ax.bar(range(len(durs)), durs, color=colors_dd, alpha=0.8)
+        ax.axhline(y=np.median(durs), color=COLORS['v1_adaptive'], linestyle='--',
+                   linewidth=1.5, label=f'Median: {np.median(durs):.0f} ticks')
+        ax.set_xlabel('Drawdown Event #', color=COLORS['text'], fontsize=11)
+        ax.set_ylabel('Duration (ticks)', color=COLORS['text'], fontsize=11)
+        ax.set_title('Drawdown Durations', color=COLORS['text'], fontsize=12, fontweight='bold')
+        ax.legend(facecolor='#2a2a4a', edgecolor=COLORS['grid'], labelcolor=COLORS['text'], fontsize=9)
+    else:
+        ax.text(0.5, 0.5, 'No drawdowns detected', transform=ax.transAxes,
+                ha='center', va='center', color=COLORS['text'])
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'], axis='y')
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+
+    plt.tight_layout()
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close()
+
+
+def plot_trade_pnl_timeseries(pdf, sim_data):
+    fig, axes = plt.subplots(1, 2, figsize=(11, 6))
+    fig.patch.set_facecolor(COLORS['bg'])
+
+    ts = sim_data.get('trade_summary', {})
+    trades = ts.get('trades', [])
+
+    ax = axes[0]
+    ax.set_facecolor(COLORS['bg'])
+    if trades:
+        pnls = [t.get('pnl', 0) for t in trades if 'pnl' in t]
+        if pnls:
+            times = list(range(len(pnls)))
+            colors = [COLORS['mean_reversion'] if p >= 0 else '#f44336' for p in pnls]
+            ax.scatter(times, [p/1000 for p in pnls], c=colors, alpha=0.6, s=20, edgecolors='none')
+            if len(pnls) > 5:
+                window = min(20, len(pnls)//3)
+                ma = np.convolve([p/1000 for p in pnls], np.ones(window)/window, mode='valid')
+                ax.plot(np.arange(window-1, len(pnls)), ma, color=COLORS['v1_adaptive'],
+                        linewidth=2, label=f'{window}-Trade MA')
+            ax.axhline(y=0, color='#888', linestyle='--', linewidth=1)
+            ax.legend(facecolor='#2a2a4a', edgecolor=COLORS['grid'], labelcolor=COLORS['text'], fontsize=9)
+    ax.set_xlabel('Trade #', color=COLORS['text'], fontsize=11)
+    ax.set_ylabel('PnL ($K)', color=COLORS['text'], fontsize=11)
+    ax.set_title('Individual Trade PnL Over Time', color=COLORS['text'],
+                 fontsize=12, fontweight='bold')
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'])
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+
+    ax = axes[1]
+    ax.set_facecolor(COLORS['bg'])
+    if trades:
+        pnls = [t.get('pnl', 0) for t in trades if 'pnl' in t]
+        if pnls:
+            wins = [p for p in pnls if p > 0]
+            losses = [p for p in pnls if p < 0]
+            ax.hist([w/1000 for w in wins], bins=20, color=COLORS['mean_reversion'],
+                    alpha=0.7, label=f'Wins ({len(wins)})', edgecolor=COLORS['bg'])
+            ax.hist([l/1000 for l in losses], bins=20, color='#f44336',
+                    alpha=0.7, label=f'Losses ({len(losses)})', edgecolor=COLORS['bg'])
+            ax.axvline(x=np.mean(pnls)/1000, color=COLORS['v1_adaptive'], linestyle='--',
+                       linewidth=2, label=f'Mean: ${np.mean(pnls)/1000:+.1f}K')
+            ax.legend(facecolor='#2a2a4a', edgecolor=COLORS['grid'], labelcolor=COLORS['text'], fontsize=9)
+    ax.set_xlabel('PnL ($K)', color=COLORS['text'], fontsize=11)
+    ax.set_ylabel('Frequency', color=COLORS['text'], fontsize=11)
+    ax.set_title('Trade PnL Distribution', color=COLORS['text'],
+                 fontsize=12, fontweight='bold')
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'], axis='y')
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+
+    plt.tight_layout()
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close()
+
+
+def plot_profit_factor_comparison(pdf, versions):
+    fig, ax = plt.subplots(figsize=(11, 6))
+    fig.patch.set_facecolor(COLORS['bg'])
+    ax.set_facecolor(COLORS['bg'])
+
+    order = ['v0_baseline', 'v1_adaptive_z', 'v2_staged_exit', 'v3_atr_stops',
+             'v4_dd_scaling', 'v5_circuit_breaker', 'v6_regime_guard',
+             'v7_stale_exit', 'v8_kelly', 'v9_volume_confirm', 'v10_atr_best', 'v1_p1']
+    labels = ['V0\nBaseline', 'V1\nAdaptive Z', 'V2\nStaged Exit', 'V3\nATR Stops',
+              'V4\nDD Scale', 'V5\nCircuit Brk', 'V6\nRegime Guard',
+              'V7\nStale Exit', 'V8\nKelly', 'V9\nVol Confirm', 'V10\nBest ATR', 'V1+P1\nFull']
+
+    pf_values = []
+    valid_labels = []
+    valid_colors = []
+    color_map = {
+        'v0_baseline': '#888', 'v1_adaptive_z': COLORS['v1_adaptive'],
+        'v2_staged_exit': '#FF9800', 'v3_atr_stops': '#f44336',
+        'v4_dd_scaling': '#9C27B0', 'v5_circuit_breaker': '#E91E63',
+        'v6_regime_guard': '#00BCD4', 'v7_stale_exit': '#4CAF50',
+        'v8_kelly': '#795548', 'v9_volume_confirm': '#607D8B',
+        'v10_atr_best': '#FF5722', 'v1_p1': COLORS['v1_p1'],
+    }
+
+    for key, label in zip(order, labels):
+        if key in versions:
+            pf = versions[key].get('profit_factor', 0)
+            if pf > 0:
+                pf_values.append(pf)
+                valid_labels.append(label)
+                valid_colors.append(color_map.get(key, '#888'))
+
+    if pf_values:
+        bars = ax.bar(range(len(pf_values)), pf_values, color=valid_colors, alpha=0.85, width=0.7)
+        ax.set_xticks(range(len(valid_labels)))
+        ax.set_xticklabels(valid_labels, rotation=0, ha='center', color=COLORS['text'], fontsize=8)
+        ax.axhline(y=1.0, color='#f44336', linestyle='--', linewidth=1.5, alpha=0.7, label='Break-even (PF=1.0)')
+        for bar, val in zip(bars, pf_values):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
+                    f'{val:.2f}', ha='center', va='bottom', color=COLORS['text'], fontsize=9)
+        ax.legend(facecolor='#2a2a4a', edgecolor=COLORS['grid'], labelcolor=COLORS['text'], fontsize=9)
+
+    ax.set_ylabel('Profit Factor', color=COLORS['text'], fontsize=12)
+    ax.set_title('Profit Factor by Version (Gross Profits / Gross Losses)', color=COLORS['text'],
+                 fontsize=14, fontweight='bold')
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'], axis='y')
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+    plt.tight_layout()
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close()
+
+
+def plot_best_worst_5day(pdf, versions):
+    fig, ax = plt.subplots(figsize=(11, 6))
+    fig.patch.set_facecolor(COLORS['bg'])
+    ax.set_facecolor(COLORS['bg'])
+
+    order = ['v0_baseline', 'v1_adaptive_z', 'v2_staged_exit', 'v3_atr_stops',
+             'v10_atr_best', 'v1_p1']
+    labels = ['V0', 'V1', 'V2', 'V3', 'V10', 'V1+P1']
+    color_map = {
+        'v0_baseline': '#888', 'v1_adaptive_z': COLORS['v1_adaptive'],
+        'v2_staged_exit': '#FF9800', 'v3_atr_stops': '#f44336',
+        'v10_atr_best': '#FF5722', 'v1_p1': COLORS['v1_p1'],
+    }
+
+    best_vals = []
+    worst_vals = []
+    valid_labels = []
+    for key, label in zip(order, labels):
+        if key in versions:
+            best_vals.append(versions[key].get('best_5d_pct', 0))
+            worst_vals.append(versions[key].get('worst_5d_pct', 0))
+            valid_labels.append(label)
+
+    if best_vals:
+        x = np.arange(len(valid_labels))
+        width = 0.35
+        bars1 = ax.bar(x - width/2, best_vals, width, label='Best 5-Day',
+                       color=COLORS['mean_reversion'], alpha=0.85)
+        bars2 = ax.bar(x + width/2, worst_vals, width, label='Worst 5-Day',
+                       color='#f44336', alpha=0.85)
+        ax.set_xticks(x)
+        ax.set_xticklabels(valid_labels, color=COLORS['text'], fontsize=10)
+        for bar, val in zip(bars1, best_vals):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
+                    f'+{val:.1f}%', ha='center', va='bottom', color=COLORS['mean_reversion'], fontsize=9)
+        for bar, val in zip(bars2, worst_vals):
+            y = bar.get_height() if val >= 0 else bar.get_height() - 0.3
+            va = 'bottom' if val >= 0 else 'top'
+            ax.text(bar.get_x() + bar.get_width()/2, y,
+                    f'{val:.1f}%', ha='center', va=va, color='#f44336', fontsize=9)
+
+    ax.axhline(y=0, color='#888', linestyle='-', linewidth=0.8)
+    ax.set_ylabel('Return (%)', color=COLORS['text'], fontsize=12)
+    ax.set_title('Best vs Worst 5-Day Rolling Returns (Tail Risk)', color=COLORS['text'],
+                 fontsize=14, fontweight='bold')
+    ax.legend(facecolor='#2a2a4a', edgecolor=COLORS['grid'], labelcolor=COLORS['text'], fontsize=10)
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'], axis='y')
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+    plt.tight_layout()
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close()
+
+
+def plot_version_waterfall(pdf, versions):
+    fig, ax = plt.subplots(figsize=(11, 7))
+    fig.patch.set_facecolor(COLORS['bg'])
+    ax.set_facecolor(COLORS['bg'])
+
+    steps = [
+        ('V0\nBaseline', 'v0_baseline', '#888'),
+        ('+Adaptive Z\n(V1)', 'v1_adaptive_z', COLORS['v1_adaptive']),
+        ('+DD Scaling\n(V4)', 'v4_dd_scaling', '#9C27B0'),
+        ('+Circuit Brk\n(V5)', 'v5_circuit_breaker', '#E91E63'),
+        ('+Regime\nGuard (V6)', 'v6_regime_guard', '#00BCD4'),
+        ('+Stale Exit\n(V7)', 'v7_stale_exit', '#4CAF50'),
+        ('V1+P1\nFull Stack', 'v1_p1', COLORS['v1_p1']),
+    ]
+
+    returns = []
+    valid_steps = []
+    valid_colors = []
+    for label, key, color in steps:
+        if key in versions:
+            returns.append(versions[key].get('total_return_pct', 0))
+            valid_steps.append(label)
+            valid_colors.append(color)
+
+    if not valid_steps:
+        pdf.savefig(fig, facecolor=fig.get_facecolor())
+        plt.close()
+        return
+
+    cumulative = [0]
+    for r in returns:
+        cumulative.append(cumulative[-1] + (r - cumulative[-1]))
+
+    bottoms = [0] * len(returns)
+    deltas = [returns[0]]
+    for i in range(1, len(returns)):
+        deltas.append(returns[i] - returns[i-1])
+
+    x = np.arange(len(valid_steps))
+    for i, (d, c) in enumerate(zip(deltas, valid_colors)):
+        if d >= 0:
+            ax.bar(i, d, bottom=returns[i-1] if i > 0 else 0, color=c, alpha=0.85, width=0.6)
+        else:
+            ax.bar(i, abs(d), bottom=returns[i], color=c, alpha=0.6, width=0.6, hatch='//')
+
+    for i, (r, d) in enumerate(zip(returns, deltas)):
+        y_pos = r + 1 if d >= 0 else r - 1
+        sign = '+' if d >= 0 else ''
+        ax.text(i, y_pos, f'{r:.1f}%\n({sign}{d:.1f})',
+                ha='center', va='bottom' if d >= 0 else 'top',
+                color=COLORS['text'], fontsize=9, fontweight='bold')
+
+    ax.plot(x, returns, 'o-', color=COLORS['text'], markersize=6, linewidth=1.5, zorder=5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(valid_steps, color=COLORS['text'], fontsize=9)
+    ax.set_ylabel('Cumulative Return (%)', color=COLORS['text'], fontsize=12)
+    ax.set_title('Version Evolution Waterfall: Cumulative Improvement', color=COLORS['text'],
+                 fontsize=14, fontweight='bold')
+    ax.tick_params(colors=COLORS['text'])
+    ax.grid(True, alpha=0.2, color=COLORS['grid'], axis='y')
+    for spine in ax.spines.values():
+        spine.set_color(COLORS['grid'])
+    plt.tight_layout()
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close()
+
+
 def generate_report(results_path: str, output_path: str):
     with open(results_path) as f:
         results = json.load(f)
 
-    versions_path = '/home/kushal_jain/Meractus/results'
+    versions_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
     versions = {}
     for fname in os.listdir(versions_path):
         if fname.endswith('.json'):
@@ -537,6 +914,10 @@ def generate_report(results_path: str, output_path: str):
 
     print(f"Generating report from {results_path}...")
     print(f"Loaded {len(versions)} version results")
+
+    sim_data = _load_sim_data()
+    print(f"Loaded sim data: {len(sim_data.get('equity', []))} equity points, "
+          f"{len(sim_data.get('trade_summary', {}).get('trades', []))} trades")
 
     with PdfPages(output_path) as pdf:
         # Title page
@@ -575,6 +956,18 @@ def generate_report(results_path: str, output_path: str):
         plot_symbol_pnl(pdf, results, versions)
         plot_trade_distribution(pdf, results, versions)
         plot_rolling_sharpe(pdf, results, versions)
+
+        # NEW: Real simulation data charts
+        add_text_page(pdf, 'Live Simulation Results', SIMULATION_RESULTS_TEXT)
+        plot_real_equity_curve(pdf, sim_data)
+        plot_drawdown_duration(pdf, sim_data)
+        plot_trade_pnl_timeseries(pdf, sim_data)
+
+        # NEW: Version analysis charts
+        add_text_page(pdf, 'Deep Version Analysis', VERSION_ANALYSIS_TEXT)
+        plot_profit_factor_comparison(pdf, versions)
+        plot_best_worst_5day(pdf, versions)
+        plot_version_waterfall(pdf, versions)
 
         # Strategy Descriptions
         add_text_page(pdf, 'Strategy Descriptions', STRATEGY_DESCRIPTIONS)
@@ -748,6 +1141,51 @@ WORST-DAY ANALYSIS:
 All strategies pass positive worst-day requirement.
 """
 
+SIMULATION_RESULTS_TEXT = """
+LIVE SIMULATION RESULTS:
+The following charts show actual tick-by-tick simulation results,
+NOT synthetic/backtest projections. Data comes from running the
+strategy against the full 30-symbol dataset in real-time.
+
+REAL EQUITY CURVE:
+- Shows actual portfolio value at each of 35,370 ticks
+- 200-tick moving average smooths noise
+- Green/red shading shows above/below starting capital
+- Rate-limited to 60 trades/min (realistic competition constraints)
+
+DRAWDOWN ANALYSIS:
+- Upper panel: underwater chart showing drawdown from peak
+- Lower panel: duration of each drawdown event
+- Median drawdown duration indicates recovery speed
+
+TRADE-LEVEL ANALYSIS:
+- Left: Individual trade PnLs over time with moving average
+- Right: PnL distribution (win/loss histogram)
+- Clustered wins/losses indicate regime-dependent performance
+"""
+
+VERSION_ANALYSIS_TEXT = """
+DEEP VERSION ANALYSIS:
+
+PROFIT FACTOR:
+- Ratio of gross profits to gross losses
+- PF > 1.0 = profitable, PF > 2.0 = strong edge
+- V1 Adaptive Z achieves highest PF with fewest trades
+- Kelly criterion (V8) kills profit factor by over-sizing
+
+TAIL RISK (Best/Worst 5-Day):
+- Best 5-day: maximum winning streak potential
+- Worst 5-day: maximum drawdown exposure
+- V1 has best worst-5day: -3.2% vs V0's -7.6%
+- Adaptive z-score protects against sustained losses
+
+VERSION EVOLUTION WATERFALL:
+- Shows cumulative improvement from V0 baseline to final V1+P1
+- Each bar shows the incremental gain from that improvement
+- Green bars = improvement, hatched bars = degradation
+- Adaptive z-score (V1) is the single largest contributor
+"""
+
 CONCLUSIONS = """
 RECOMMENDATIONS:
 1. Deploy V1 Adaptive Z-Score as primary strategy (Sharpe 7.51)
@@ -783,8 +1221,9 @@ Our strategy targets: Top PnL + Clean Code + Professional Report
 
 
 if __name__ == '__main__':
-    results_path = '/home/kushal_jain/Meractus/backtest_results.json'
-    output_path = '/home/kushal_jain/Meractus/trading_report.pdf'
+    _dir = os.path.dirname(os.path.abspath(__file__))
+    results_path = os.path.join(_dir, 'docs', 'backtest_results.json')
+    output_path = os.path.join(_dir, 'trading_report.pdf')
 
     with open(results_path) as f:
         results = json.load(f)

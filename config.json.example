@@ -1,0 +1,15 @@
+{
+  "server": {
+    "base_url": "http://localhost:4040",
+    "ws_url": "ws://localhost:4040/ws"
+  },
+  "auth": {
+    "api_key": "",
+    "email": "your_email@uni.edu",
+    "password": "YourPassword#1"
+  },
+  "schedule": {
+    "from": "00:00:00",
+    "to": "23:59:59"
+  }
+}

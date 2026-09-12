@@ -191,7 +191,7 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
         # ---- MODEL SIGNALS ----
 
         signal_mom = _momentum_signal(prices, volumes, bar_idx)
-        signal_mr = _mean_reversion_signal(prices, volumes, bar_idx)
+        signal_mr = _mean_reversion_signal(prices, volumes, bar_idx, sym=sym)
         signal_comp = _composite_signal(prices, volumes, bar_idx)
 
         def signal_to_num(sig):
@@ -237,6 +237,13 @@ def strategy(current_data: Dict, portfolio: Dict, cash: float,
                 pct = (current_price - old_price) / old_price
                 if pct < -0.15:
                     _state['highest_prices'][sym] = current_price * 1.02
+
+    # H4: Force stale exit for symbols in portfolio but missing from current_data
+    for sym in list(portfolio.keys()):
+        if sym not in current_data and sym in _state['bars_in_pos']:
+            held = portfolio[sym].get('quantity', 0)
+            if held > 0 and _state['bars_in_pos'][sym] > _state['stale_exit_bars']:
+                actions[sym] = ('SELL', held)
 
     return actions
 
@@ -309,7 +316,7 @@ def _momentum_signal(prices, volumes, bar_idx):
     return ('HOLD', 0.0)
 
 
-def _mean_reversion_signal(prices, volumes, bar_idx):
+def _mean_reversion_signal(prices, volumes, bar_idx, sym=None):
     """V2: Adaptive z-score threshold based on volatility regime."""
     if bar_idx < 30:
         return ('HOLD', 0.0)
@@ -324,7 +331,7 @@ def _mean_reversion_signal(prices, volumes, bar_idx):
     rsi_val = _rsi(prices)
 
     # KEY IMPROVEMENT: Adaptive z-score threshold
-    vol_pct = _compute_vol_percentile(prices, bar_idx, sym=None)
+    vol_pct = _compute_vol_percentile(prices, bar_idx, sym=sym)
     adaptive_z = -2.0 + (vol_pct - 0.5) * 1.5  # range: -2.75 to -1.25
 
     # Flash crash

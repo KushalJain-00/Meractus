@@ -1,6 +1,24 @@
-__pycache__/
-*.pyc
-.DS_Store
-*.log
+# Secrets
 config.json
 .env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & simulation output
+logs/
+*.log
+
+# Data (large files)
+paper_dataset*.csv
+
+# Editor
+.vscode/
+.idea/
+*.swp
